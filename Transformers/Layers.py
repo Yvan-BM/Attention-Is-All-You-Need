@@ -13,9 +13,9 @@ class EncoderLayer(nn.Module):
         self.FFN = PositionwiseFeedForward(d_model, d_hid, dropout=dropout)
 
     def forward(self, encoder_input, mask=None):
-        res1 = input
+        res1 = encoder_input
         output1, MHA = self.MHA(encoder_input, encoder_input, encoder_input, mask=mask)
-        output1 = res1 + self.layerNorm(ouput1)
+        output1 = res1 + self.layerNorm(output1)
         res2 = output1
         output2 = self.FFN(output1)
         output2 = res2 + self.layerNorm(output2)
