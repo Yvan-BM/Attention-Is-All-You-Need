@@ -17,9 +17,11 @@ class EncoderLayer(nn.Module):
     def forward(self, encoder_input, mask=None):
         res1 = encoder_input
         output1, MHA = self.MHA(encoder_input, encoder_input, encoder_input, mask=mask)
+        # residual and normalization
         output1 = res1 + self.layerNorm(output1)
         res2 = output1
         output2 = self.FFN(output1)
+        # residual and normalization
         output2 = res2 + self.layerNorm(output2)
         encoder_output = output2
         return encoder_output, MHA
@@ -38,12 +40,15 @@ class DecoderLayer(nn.Module):
     def forward(self, decoder_input, encoder_output, self_attn_mask=None, dec_enc_attn_mask=None):
         res1 = decoder_input
         output1, MMHA = self.MMHA(decoder_input, decoder_input, decoder_input, mask=self_attn_mask)
+        # residual and normalization
         output1 = res1 + self.layerNorm(output1)
         res2 = output1
         output2, MHA = self.MHA(output1, encoder_output, encoder_output, mask=dec_enc_attn_mask)
+        # residual and normalization
         output2 = res2 + self.layerNorm(output2)
         res3 = output2
         output3 = self.FFN(output2)
+        # residual and normalization
         decoder_output = res3 + output3
 
         return decoder_output, MMHA, MHA
