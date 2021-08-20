@@ -3,6 +3,8 @@ import torch.nn as nn
 import numpy as np
 from Transformers.SubLayers import MultiHeadAttention, PositionwiseFeedForward
 
+'''_author = Yvan Tamdjo'''
+
 class EncoderLayer(nn.Module):
     ''' Compose with two layers '''
 

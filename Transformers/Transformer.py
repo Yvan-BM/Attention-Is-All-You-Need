@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from Transformers.Layers import EncoderLayer, DecoderLayer
 
+'''_author = Yvan Tamdjo'''
 
 def get_pad_mask(seq, pad_idx):
     return (seq != pad_idx).unsqueeze(-2)

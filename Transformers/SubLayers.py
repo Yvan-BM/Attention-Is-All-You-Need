@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from Transformers.Modules import ScaledDotProductAttention
 
+'''_author = Yvan Tamdjo'''
+
 class MultiHeadAttention(nn.Module):
     ''' Multi-Head Attention module '''
 
