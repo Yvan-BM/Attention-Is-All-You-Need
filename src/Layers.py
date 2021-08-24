@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from config import arg
 from Transformers.SubLayers import MultiHeadAttention, PositionwiseFeedForward
 
 '''_author = Yvan Tamdjo'''
@@ -8,7 +9,7 @@ from Transformers.SubLayers import MultiHeadAttention, PositionwiseFeedForward
 class EncoderLayer(nn.Module):
     ''' Compose with two layers '''
 
-    def __init__(self, d_model, d_hid, n_head, d_k, d_v, dropout=0.1):
+    def __init__(self, d_model, d_hid, n_head, d_k, d_v, dropout=arg.dropout):
         super(EncoderLayer, self).__init__()
         self.MHA = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout)
         self.layerNorm = nn.LayerNorm(d_model, eps=1e-6)
@@ -30,7 +31,7 @@ class EncoderLayer(nn.Module):
 class DecoderLayer(nn.Module):
     ''' Compose with three layers '''
 
-    def __init__(self, d_model, d_hid, n_head, d_k, d_v, dropout=0.1):
+    def __init__(self, d_model, d_hid, n_head, d_k, d_v, dropout=arg.dropout):
         super(DecoderLayer, self).__init__()
         self.MMHA = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout)
         self.MHA = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout)
