@@ -1,14 +1,17 @@
-import torch
+import torch.nn as nn
 
 '''_author = Yvan Tamdjo'''
 
-def get_pad_mask(seq, pad_idx):
-    return (seq != pad_idx).unsqueeze(-2)
+def count_parameters(model):
+  return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def get_subsequent_mask(seq):
-    ''' For masking out the subsequent info. '''
-    sz_b, len_s = seq.size()
-    subsequent_mask = (1 - torch.triu(
-    torch.ones((1, len_s, len_s), device=seq.device), diagonal=1)).bool()
-    return subsequent_mask
+def initialize_weights(m):
+  if hasattr(m, 'weight') and m.weight.dim() > 1:
+    nn.init.kaiming_uniform(m.weight.data)
+
+def epoch_time(start_time, end_time):
+    elapsed_time = end_time - start_time
+    elapsed_mins = int(elapsed_time / 60)
+    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
+    return elapsed_mins, elapsed_secs
