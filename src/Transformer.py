@@ -2,72 +2,119 @@ import torch
 import torch.nn as nn
 import numpy as np
 from src.Layers import EncoderLayer, DecoderLayer
-from src.utils import get_pad_mask, get_subsequent_mask
+from src.Modules import TokenEmbedding, PostionalEncoding
 
 '''_author = Yvan Tamdjo'''
 
 class Encoder(nn.Module):
-    "Core encoder is a stack of N layers"
-    def __init__(self, layer, N):
-        super(Encoder, self).__init__()
-        self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(N)])
-        self.layerNorm = nn.LayerNorm(layer.size, eps=1e-6)
 
-    def forward(self, x, mask):
-        "Pass the input (and mask) through each layer in turn."
-        for layer in self.layers:
-            x = layer(x, mask)
-        return self.layerNorm(x)
+  def __init__(self, enc_voc_size, max_len, d_model, d_hid, n_head, n_layers, dropout, device):
+    super().__init__()
+    
+    self.token_emb = TokenEmbedding(enc_voc_size, d_model)
+    self.pos_emb = PostionalEncoding(d_model, max_len, device)
+    self.dropout = nn.Dropout(dropout)
+
+    self.layers = nn.ModuleList([EncoderLayer(d_model=d_model,
+                                              d_hid=d_hid,
+                                              n_head=n_head,
+                                              dropout=dropout)
+                                  for _ in range(n_layers)])
+
+  def forward(self, x, s_mask):
+    x = self.dropout(self.token_emb(x) + self.pos_emb(x))
+
+    for layer in self.layers:
+      x = layer(x, s_mask)
+
+    return x
 
 
 class Decoder(nn.Module):
-    "Generic N layer decoder with masking."
-    def __init__(self, layer, N):
-        super(Decoder, self).__init__()
-        self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(N)])
+  def __init__(self, dec_voc_size, max_len, d_model, d_hid, n_head, n_layers, dropout, device):
+    super().__init__()
+    
+    self.token_emb = TokenEmbedding(dec_voc_size, d_model)
+    self.pos_emb = PostionalEncoding(d_model, max_len, device)
+    self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
-        for layer in self.layers:
-            x = layer(x, memory, src_mask, tgt_mask)
-        return x
+    self.layers = nn.ModuleList([DecoderLayer(d_model=d_model,
+                                              d_hid=d_hid,
+                                              n_head=n_head,
+                                              dropout=dropout)
+                                  for _ in range(n_layers)])
+
+    self.linear = nn.Linear(d_model, dec_voc_size)
+
+  def forward(self, trg, enc_src, trg_mask, src_mask):
+    trg = self.dropout(self.token_emb(trg) + self.pos_emb(trg))
+
+    for layer in self.layers:
+      trg = layer(trg, enc_src, trg_mask, src_mask)
+
+    output = self.linear(trg)
+    return output
 
 
 class Transformer(nn.Module):
-    ''' A sequence to sequence model with attention mechanism. '''
 
-    def __init__(
-            self, n_src_vocab, n_trg_vocab, src_pad_idx, trg_pad_idx,
-            d_word_vec=512, d_model=512, d_inner=2048,
-            n_layers=6, n_head=8, d_k=64, d_v=64, dropout=0.1, n_position=200):
+  def __init__(self, src_pad_idx, trg_pad_idx, trg_sos_idx, enc_voc_size, dec_voc_size, d_model, n_head, max_len,
+                d_hid, n_layers, dropout, device):
+    super().__init__()
+    self.src_pad_idx = src_pad_idx
+    self.trg_pad_idx = trg_pad_idx
+    self.trg_sos_idx = trg_sos_idx
+    self.device = device
+    self.encoder = Encoder(d_model=d_model,
+                            n_head=n_head,
+                            max_len=max_len,
+                            d_hid=d_hid,
+                            enc_voc_size=enc_voc_size,
+                            dropout=dropout,
+                            n_layers=n_layers,
+                            device=device)
 
-        super().__init__()
+    self.decoder = Decoder(d_model=d_model,
+                            n_head=n_head,
+                            max_len=max_len,
+                            d_hid=d_hid,
+                            dec_voc_size=dec_voc_size,
+                            dropout=dropout,
+                            n_layers=n_layers,
+                            device=device)
 
-        self.src_pad_idx, self.trg_pad_idx = src_pad_idx, trg_pad_idx
-        self.d_model = d_model
+  def forward(self, src, trg):
+    src_mask = self.make_pad_mask(src, src)
 
-        self.encoder = Encoder(
-            n_src_vocab=n_src_vocab, n_position=n_position,
-            d_word_vec=d_word_vec, d_model=d_model, d_inner=d_inner,
-            n_layers=n_layers, n_head=n_head, d_k=d_k, d_v=d_v,
-            pad_idx=src_pad_idx, dropout=dropout)
+    src_trg_mask = self.make_pad_mask(trg, src)
 
-        self.decoder = Decoder(
-            n_trg_vocab=n_trg_vocab, n_position=n_position,
-            d_word_vec=d_word_vec, d_model=d_model, d_inner=d_inner,
-            n_layers=n_layers, n_head=n_head, d_k=d_k, d_v=d_v,
-            pad_idx=trg_pad_idx, dropout=dropout)
+    trg_mask = self.make_pad_mask(trg, trg) * \
+                self.make_no_peak_mask(trg, trg)
 
-        self.trg_word_prj = nn.Linear(d_model, n_trg_vocab, bias=False)
+    enc_src = self.encoder(src, src_mask)
+    output = self.decoder(trg, enc_src, trg_mask, src_trg_mask)
+    return output
 
-    def forward(self, src_seq, trg_seq):
+  def make_pad_mask(self, q, k):
+    len_q, len_k = q.size(1), k.size(1)
 
-        src_mask = get_pad_mask(src_seq, self.src_pad_idx)
-        trg_mask = get_pad_mask(trg_seq, self.trg_pad_idx) & get_subsequent_mask(trg_seq)
+    # batch_size x 1 x 1 x len_k
+    k = k.ne(self.src_pad_idx).unsqueeze(1).unsqueeze(2)
+    # batch_size x 1 x len_q x len_k
+    k = k.repeat(1, 1, len_q, 1)
 
-        enc_output, *_ = self.encoder(src_seq, src_mask)
-        dec_output, *_ = self.decoder(trg_seq, trg_mask, enc_output, src_mask)
-        seq_logit = self.trg_word_prj(dec_output)
-        if self.scale_prj:
-            seq_logit *= self.d_model ** -0.5
+    # batch_size x 1 x len_q x 1
+    q = q.ne(self.src_pad_idx).unsqueeze(1).unsqueeze(3)
+    # batch_size x 1 x len_q x len_k
+    q = q.repeat(1, 1, 1, len_k)
 
-        return seq_logit.view(-1, seq_logit.size(2))
+    mask = k & q
+    return mask
+
+  def make_no_peak_mask(self, q, k):
+    len_q, len_k = q.size(1), k.size(1)
+
+    # len_q x len_k
+    mask = torch.tril(torch.ones(len_q, len_k)).type(torch.BoolTensor).to(self.device)
+
+    return mask

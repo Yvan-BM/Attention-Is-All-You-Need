@@ -6,59 +6,61 @@ from src.Modules import ScaledDotProductAttention
 '''_author = Yvan Tamdjo'''
 
 class MultiHeadAttention(nn.Module):
-    ''' Multi-Head Attention module '''
 
-    def __init__(self, n_head, d_model, d_k, d_v, dropout=arg.dropout):
-        super().__init__()
+  def __init__(self, d_model, n_head):
+    super(MultiHeadAttention, self).__init__()
 
-        self.n_head = n_head
-        self.d_k = d_k
-        self.d_v = d_v
+    self.n_head = n_head
+    self.w_q = nn.Linear(d_model, d_model)
+    self.w_k = nn.Linear(d_model, d_model)
+    self.w_v = nn.Linear(d_model, d_model)
+    self.w_concat = nn.Linear(d_model, d_model)
+    self.attention = ScaledDotProductAttention()
+    
+  def forward(self, Q, K, V, mask=None):
 
-        self.w_q = nn.Linear(d_model, n_head * d_k)
-        self.w_k = nn.Linear(d_model, n_head * d_k)
-        self.w_v = nn.Linear(d_model, n_head * d_v)
-        self.FC = nn.Linear(n_head * d_v, d_model)
+    Q, K, V = self.w_q(Q), self.w_k(K), self.w_v(V)
 
-        self.attention = ScaledDotProductAttention(d_k)
+    Q, K, V = self.split(Q), self.split(K), self.split(V)
 
-        self.dropout = nn.Dropout(dropout)
+    out, attention = self.attention(Q, K, V, mask=mask)
 
+    out = self.concat(out)
+    out = self.w_concat(out)
 
-    def forward(self, Q, K, V, mask=None):
+    return out
 
-        Q = self.w_q(Q).view(Q.size(0), Q.size(1), self.n_head, self.d_k)
-        K = self.w_k(K).view(K.size(0), K.size(1), self.n_head, self.d_k)
-        V = self.w_v(V).view(V.size(0), V.size(1), self.n_head, self.d_v)
+  def split(self, tensor):
+  
+    batch_size, length, d_model = tensor.size()
 
-        
-        Q, K, V = Q.transpose(1, 2), K.transpose(1, 2), V.transpose(1, 2)
+    d_tensor = d_model // self.n_head
+    tensor = tensor.view(batch_size, self.n_head, length, d_tensor)
+    # it is similar with group convolution (split by number of heads)
 
-        if mask is not None:
-            mask = mask.unsqueeze(1)   # For head axis broadcasting.
+    return tensor
 
-        Q, attn = self.attention(Q, K, V, mask=mask)
+  def concat(self, tensor):
+  
+    batch_size, head, length, d_tensor = tensor.size()
+    d_model = head * d_tensor
 
-        Q = Q.transpose(1, 2).contiguous().view(Q.size(0), Q.size(1), -1)
-        Q = self.FC(Q)
-        Q = self.dropout(Q)
-
-        return Q, attn
+    tensor = tensor.view(batch_size, length, d_model)
+    return tensor
 
 
 class PositionwiseFeedForward(nn.Module):
-    ''' A two-feed-forward-layer module '''
 
-    def __init__(self, d_model, d_hid, dropout=arg.dropout):
-        super().__init__()
-        self.W_1 = nn.Linear(d_model, d_hid)
-        self.W_2 = nn.Linear(d_hid, d_model)
-        self.dropout = nn.Dropout(dropout)
+  def __init__(self, d_model, d_hid, dropout=0.1):
+    super(PositionwiseFeedForward, self).__init__()
+    self.W_1 = nn.Linear(d_model, d_hid)
+    self.W_2 = nn.Linear(d_hid, d_model)
+    self.relu = nn.ReLU()
+    self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
-        x = self.W_1(x)
-        x = nn.Relu(x)
-        x = self.W_2(x)
-        x = self.dropout(x)
-
-        return x
+  def forward(self, x):
+    x = self.W_1(x)
+    x = self.relu(x)
+    x = self.dropout(x)
+    x = self.W_2(x)
+    return x
